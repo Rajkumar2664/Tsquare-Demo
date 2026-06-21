@@ -1,66 +1,93 @@
-# auth_service/database.py
-import sqlite3
+from flask import Flask, request, jsonify
+import mysql.connector
 import hashlib
 import os
-from datetime import datetime
 
-class AuthDatabase:
-    def __init__(self, db_path="auth.db"):
-        self.db_path = db_path
-        self.init_db()
+app = Flask(__name__)
 
-    def init_db(self):
-        """Initialize the database with required tables"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Create users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                phone TEXT,
-                password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT 1
-            )
-        ''')
-        
-        # Create artists table (for makeup artists)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS artists (
-                artist_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                phone TEXT,
-                specialization TEXT,
-                experience_years INTEGER,
-                rating FLOAT DEFAULT 0,
-                is_available BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        conn.commit()
+# Database configuration
+DB_CONFIG = {
+    'host': 'db',
+    'user': 'root',
+    'password': 'password',
+    'database': 'library_db'
+}
+
+def get_db_connection():
+    return mysql.connector.connect(**DB_CONFIG)
+
+def hash_password(password):
+    salt = os.urandom(32)
+    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+    return salt + key
+
+def verify_password(stored_password, provided_password):
+    salt = stored_password[:32]
+    stored_key = stored_password[32:]
+    new_key = hashlib.pbkdf2_hmac('sha256', provided_password.encode('utf-8'), salt, 100000)
+    return new_key == stored_key
+
+@app.route("/signup", methods=["POST"])
+def signup():
+    data = request.json
+    name = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not all([name, email, password]):
+        return jsonify({"error": "Missing fields"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if user exists
+    cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+    if cursor.fetchone():
+        cursor.close()
         conn.close()
+        return jsonify({"error": "User already exists"}), 400
+    
+    # Hash password and create user
+    hashed_password = hash_password(password)
+    cursor.execute(
+        "INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
+        (name, email, hashed_password)
+    )
+    conn.commit()
+    
+    cursor.close()
+    conn.close()
+    
+    return jsonify({"message": "User created successfully"}), 201
 
-    @staticmethod
-    def hash_password(password):
-        """Hash password using SHA256"""
-        salt = os.urandom(32)
-        return hashlib.sha256((password + salt.hex()).encode()).hexdigest()
+@app.route("/signin", methods=["POST"])
+def signin():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not all([email, password]):
+        return jsonify({"error": "Missing fields"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    cursor.execute("SELECT id, name, password FROM users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+    
+    cursor.close()
+    conn.close()
+    
+    if user and verify_password(user['password'], password):
+        return jsonify({
+            "user_id": user['id'],
+            "name": user['name']
+        }), 200
+    
+    return jsonify({"error": "Invalid credentials"}), 401
 
-    def create_user(self, name, email, phone, password):
-        """Create a new user"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Simple hash (in production, use bcrypt)
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
-            
-            cursor.execute('''
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=False)            cursor.execute('''
                 INSERT INTO users (name, email, phone, password_hash)
                 VALUES (?, ?, ?, ?)
             ''', (name, email, phone, password_hash))
