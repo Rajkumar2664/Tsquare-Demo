@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: makeup_db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: makeup_db
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppassword
+    ports:
+      - "3307:3306"  # Changed to 3307 to avoid conflict with local MySQL
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - mysql_data:/var/lib/mysql
+    networks:
+      - makeup_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+
+  # Auth Service
+  auth_service:
+    build: .
+    container_name: auth_service
+    command: python auth_service/auth_service.py
+    environment:
+      - DB_HOST=db
+      - DB_USER=appuser
+      - DB_PASSWORD=apppassword
+      - DB_NAME=makeup_db
+      - FLASK_ENV=production
+      - SECRET_KEY=tsquaremakeupsecretkey
+    ports:
+      - "5001:5001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - makeup_network
+    volumes:
+      - ./auth_service:/app/auth_service
+      - ./templates:/app/templates
+
+  # Service Service (Makeup Services)
+  service_service:
+    build: .
+    container_name: service_service
+    command: python service_service/service_service.py
+    environment:
+      - DB_HOST=db
+      - DB_USER=appuser
+      - DB_PASSWORD=apppassword
+      - DB_NAME=makeup_db
+      - FLASK_ENV=production
+    ports:
+      - "5002:5002"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - makeup_network
+    volumes:
+      - ./service_service:/app/service_service
+
+  # Booking Service
+  booking_service:
+    build: .
+    container_name: booking_service
+    command: python booking_service/booking_service.py
+    environment:
+      - DB_HOST=db
+      - DB_USER=appuser
+      - DB_PASSWORD=apppassword
+      - DB_NAME=makeup_db
+      - FLASK_ENV=production
+    ports:
+      - "5003:5003"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - makeup_network
+    volumes:
+      - ./booking_service:/app/booking_service
+
+  # Gateway App (Main Entry Point)
+  gateway:
+    build: .
+    container_name: gateway_app
+    command: python app.py
+    environment:
+      - AUTH_URL=http://auth_service:5001
+      - SERVICE_URL=http://service_service:5002
+      - BOOKING_URL=http://booking_service:5003
+      - FLASK_ENV=production
+      - SECRET_KEY=tsquaremakeupsecretkey
+    ports:
+      - "5000:5000"
+    depends_on:
+      - auth_service
+      - service_service
+      - booking_service
+    networks:
+      - makeup_network
+    volumes:
+      - ./templates:/app/templates
+      - ./static:/app/static
+
+networks:
+  makeup_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
