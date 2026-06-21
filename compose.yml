@@ -22,8 +22,7 @@ services:
     ports:
       - "5001:5001"
     depends_on:
-      db:
-        condition: service_healthy
+      - db  # ✅ Simple list
     environment:
       - DB_HOST=db
 
@@ -33,8 +32,7 @@ services:
     ports:
       - "5002:5002"
     depends_on:
-      db:
-        condition: service_healthy
+      - db  # ✅ Simple list
     environment:
       - DB_HOST=db
 
@@ -44,8 +42,7 @@ services:
     ports:
       - "5003:5003"
     depends_on:
-      db:
-        condition: service_healthy
+      - db  # ✅ Simple list
     environment:
       - DB_HOST=db
 
@@ -54,7 +51,10 @@ services:
     command: python app.py
     ports:
       - "5000:5000"
-    # depends_on removed - gateway will start anyway
+    depends_on:
+      - auth_service
+      - book_service
+      - borrow_service
 
 volumes:
   mysql-data:
