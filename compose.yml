@@ -49,7 +49,7 @@ services:
     environment:
       - DB_HOST=db
 
-  gateway:
+    gateway:
     build: .
     command: python app.py
     ports:
