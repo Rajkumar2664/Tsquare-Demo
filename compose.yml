@@ -49,18 +49,12 @@ services:
     environment:
       - DB_HOST=db
 
-    gateway:
+  gateway:
     build: .
     command: python app.py
     ports:
       - "5000:5000"
-    depends_on:
-      auth_service:
-        condition: service_started
-      book_service:
-        condition: service_started
-      borrow_service:
-        condition: service_started
+    # depends_on removed - gateway will start anyway
 
 volumes:
   mysql-data:
