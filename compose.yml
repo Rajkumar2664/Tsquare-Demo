@@ -55,9 +55,12 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - auth_service
-      - book_service
-      - borrow_service
+      auth_service:
+        condition: service_started
+      book_service:
+        condition: service_started
+      borrow_service:
+        condition: service_started
 
 volumes:
   mysql-data:
